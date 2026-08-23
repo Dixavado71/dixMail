@@ -1,107 +1,38 @@
-# Projeto: Gmail Manager CLI — Python + IMAP
+# Gmail Manager CLI
 
-Crie um gerenciador de e-mail Gmail em **Python**, simples, modular e organizado, usando **IMAP** para acessar e gerenciar a conta.
+Gerenciador de e-mail Gmail via linha de comando (CLI) usando Python e IMAP.
 
-## 1. Objetivo
+## 📋 Requisitos
 
-Criar uma aplicação CLI que permita:
+- Python 3.11 ou superior
+- Conta Gmail com **Senha de App** configurada
+- Conexão com a internet
 
-* Conectar ao Gmail usando IMAP.
-* Ler credenciais de um arquivo `.env`.
-* Usar e-mail + **Senha de app do Gmail**.
-* Listar caixa de entrada.
-* Listar pastas/marcadores disponíveis.
-* Pesquisar e-mails.
-* Abrir e ler e-mails.
-* Visualizar remetente, destinatário, assunto, data e conteúdo.
-* Identificar anexos.
-* Baixar anexos.
-* Criar pastas locais para organizar downloads.
-* Excluir um ou vários e-mails.
-* Selecionar e-mails por remetente.
-* Selecionar e-mails por assunto/título.
-* Pesquisar por nome, endereço de e-mail ou texto.
-* Selecionar múltiplos e-mails.
-* Baixar anexos de vários e-mails.
-* Marcar e-mails como lidos/não lidos.
-* Mover e-mails entre pastas IMAP quando possível.
-* Ter uma interface CLI simples e fácil de navegar.
+## 🚀 Instalação
 
-## 2. Tecnologias
+1. Clone o repositório ou baixe os arquivos:
 
-Use:
-
-* Python 3.11+
-* `imaplib` para IMAP
-* `email` para processamento das mensagens
-* `python-dotenv` para `.env`
-* `pathlib` para arquivos e diretórios
-* `getpass` somente se necessário
-* `rich` para uma CLI bonita e organizada
-
-Não use OAuth 2.0.
-
-Não use Gmail API.
-
-Não use Selenium.
-
-Não use navegador.
-
-A autenticação deve ser exclusivamente:
-
-```text
-GMAIL_EMAIL
-GMAIL_APP_PASSWORD
+```bash
+cd gmail-manager
 ```
 
-através de IMAP.
+2. Instale as dependências:
 
-## 3. Estrutura
-
-Organize o projeto desta forma:
-
-```text
-gmail-manager/
-│
-├── app.py
-├── .env
-├── .env.example
-├── .gitignore
-├── requirements.txt
-├── README.md
-│
-├── src/
-│   ├── __init__.py
-│   │
-│   ├── config/
-│   │   ├── __init__.py
-│   │   └── settings.py
-│   │
-│   ├── imap/
-│   │   ├── __init__.py
-│   │   ├── client.py
-│   │   ├── folders.py
-│   │   ├── messages.py
-│   │   └── search.py
-│   │
-│   ├── email/
-│   │   ├── __init__.py
-│   │   └── parser.py
-│   │
-│   ├── attachments/
-│   │   ├── __init__.py
-│   │   └── downloader.py
-│   │
-│   └── cli/
-│       ├── __init__.py
-│       └── menu.py
-│
-└── downloads/
+```bash
+pip install -r requirements.txt
 ```
 
-## 4. `.env`
+## ⚙️ Configuração
 
-Criar:
+### 1. Criar arquivo `.env`
+
+Copie o arquivo de exemplo e edite com suas credenciais:
+
+```bash
+cp .env.example .env
+```
+
+Edite o arquivo `.env`:
 
 ```env
 GMAIL_EMAIL=seuemail@gmail.com
@@ -109,421 +40,173 @@ GMAIL_APP_PASSWORD=sua_senha_de_app
 DOWNLOAD_DIR=downloads
 ```
 
-Nunca imprimir a senha no terminal.
+### 2. Obter Senha de App do Google
 
-Nunca colocar credenciais diretamente no código.
+O Gmail não permite mais usar sua senha normal para aplicações de terceiros. Você precisa gerar uma **Senha de App**:
 
-O `.env` deve estar no `.gitignore`.
+1. Acesse sua [Conta Google](https://myaccount.google.com/)
+2. Vá em **Segurança**
+3. Em "Como fazer login no Google", ative a **Verificação em duas etapas** (se ainda não estiver ativa)
+4. Volte para **Segurança** e procure por **Senhas de app**
+5. Selecione "Mail" e seu dispositivo
+6. Clique em **Gerar**
+7. Copie a senha de 16 caracteres e cole no arquivo `.env`
 
-Criar também `.env.example` sem credenciais reais.
+⚠️ **Importante:** Nunca compartilhe sua Senha de App e nunca a coloque diretamente no código.
 
-## 5. `app.py`
+## ▶️ Como Executar
 
-O `app.py` deve ser o ponto de entrada.
-
-Fluxo:
-
-```text
-Iniciar aplicação
-       ↓
-Carregar .env
-       ↓
-Validar configurações
-       ↓
-Conectar ao Gmail via IMAP
-       ↓
-Testar INBOX
-       ↓
-Mostrar Dashboard CLI
-```
-
-Se a conexão falhar, mostrar uma mensagem clara e encerrar.
-
-## 6. Dashboard
-
-Depois da conexão mostrar algo semelhante a:
-
-```text
-╔════════════════════════════════════════════╗
-║              GMAIL MANAGER                 ║
-╠════════════════════════════════════════════╣
-║ Conta: usuario@gmail.com                   ║
-║ Status: ● Conectado                        ║
-╚════════════════════════════════════════════╝
-
-1. Caixa de entrada
-2. Pastas / Marcadores
-3. Pesquisar e-mails
-4. Abrir e-mail
-5. Selecionar e-mails
-6. Baixar anexos
-7. Gerenciar e-mails
-8. Atualizar
-0. Sair
-```
-
-Usar `rich` para tabelas, painéis e mensagens.
-
-## 7. Caixa de entrada
-
-Mostrar uma tabela contendo:
-
-```text
-ID | Data | Remetente | Assunto | Status | Anexos
-```
-
-Exemplo:
-
-```text
-1 | 23/08/2026 | empresa@email.com | Nota Fiscal | NOVO | 2
-2 | 22/08/2026 | banco@email.com   | Fatura      | LIDO | 1
-```
-
-Não carregar todos os conteúdos dos e-mails de uma vez.
-
-Inicialmente carregar apenas metadados.
-
-## 8. Pastas e categorias
-
-Obter dinamicamente as pastas existentes através do IMAP.
-
-Exemplos:
-
-```text
-INBOX
-Sent
-Drafts
-Spam
-Trash
-All Mail
-Starred
-```
-
-Não assumir nomes fixos.
-
-O Gmail pode retornar nomes diferentes dependendo da conta/configuração.
-
-Permitir selecionar uma pasta e listar seus e-mails.
-
-## 9. Pesquisa
-
-Criar um sistema de pesquisa simples.
-
-Permitir pesquisar por:
-
-```text
-Remetente
-Destinatário
-Assunto
-Nome
-Data
-Texto
-```
-
-Exemplos:
-
-```text
-from:empresa@email.com
-subject:nota fiscal
-nome da empresa
-```
-
-Também permitir selecionar todos os resultados.
-
-Sempre que possível, utilizar os recursos de busca do próprio IMAP (`SEARCH`) em vez de baixar todas as mensagens para Python.
-
-## 10. Seleção de múltiplos e-mails
-
-Permitir:
-
-```text
-Selecionar 1
-Selecionar vários
-Selecionar todos
-Cancelar seleção
-```
-
-Exemplo:
-
-```text
-Digite os IDs:
-
-1,3,5
-```
-
-ou:
-
-```text
-all
-```
-
-## 11. Manipulação
-
-Implementar:
-
-```text
-Abrir
-Marcar como lido
-Marcar como não lido
-Excluir
-Mover
-Baixar anexos
-```
-
-Para ações destrutivas, pedir confirmação:
-
-```text
-Tem certeza que deseja excluir 15 e-mails? [s/N]
-```
-
-Nunca excluir automaticamente.
-
-## 12. Leitura de e-mail
-
-Ao abrir uma mensagem mostrar:
-
-```text
-De:
-Para:
-Data:
-Assunto:
-
-------------------------------------
-CONTEÚDO
-------------------------------------
-
-...
-```
-
-Suportar mensagens:
-
-* `text/plain`
-* `text/html`
-
-Para HTML, converter para uma visualização segura em texto sempre que possível.
-
-Não executar JavaScript ou conteúdo ativo recebido por e-mail.
-
-## 13. Anexos
-
-Detectar automaticamente anexos.
-
-Mostrar:
-
-```text
-Anexos:
-
-1. documento.pdf       2.4 MB
-2. imagem.png          850 KB
-3. contrato.docx       120 KB
-```
-
-Permitir:
-
-```text
-Baixar 1
-Baixar vários
-Baixar todos
-```
-
-Salvar em:
-
-```text
-downloads/
-```
-
-Organizar opcionalmente:
-
-```text
-downloads/
-├── remetente/
-├── assunto/
-└── data/
-```
-
-Evitar sobrescrever arquivos existentes.
-
-Se existir:
-
-```text
-documento.pdf
-```
-
-usar:
-
-```text
-documento_1.pdf
-documento_2.pdf
-```
-
-## 14. Download de anexos em massa
-
-Permitir selecionar vários e-mails e executar:
-
-```text
-Baixar todos os anexos
-```
-
-Exemplo:
-
-```text
-Selecionados: 25 e-mails
-Anexos encontrados: 18
-Downloads realizados: 18
-```
-
-Mostrar progresso com `rich`.
-
-## 15. Segurança
-
-Nunca:
-
-* salvar senha em código;
-* imprimir senha;
-* colocar `.env` no Git;
-* executar conteúdo HTML recebido;
-* executar anexos;
-* sobrescrever arquivos silenciosamente.
-
-Adicionar ao `.gitignore`:
-
-```gitignore
-.env
-__pycache__/
-*.pyc
-downloads/
-.venv/
-```
-
-## 16. Tratamento de erros
-
-Tratar claramente:
-
-* credenciais inválidas;
-* falha de conexão;
-* timeout;
-* pasta inexistente;
-* e-mail inexistente;
-* mensagem inválida;
-* anexo inválido;
-* erro de download;
-* conexão IMAP perdida.
-
-Mostrar mensagens amigáveis em vez de traceback para o usuário final.
-
-## 17. Reconexão
-
-Criar uma camada `IMAPClient` responsável pela conexão.
-
-Ela deve permitir:
-
-```python
-connect()
-disconnect()
-reconnect()
-select_folder()
-search()
-fetch()
-delete()
-move()
-mark_read()
-mark_unread()
-```
-
-Evitar criar várias conexões IMAP desnecessariamente.
-
-Manter uma conexão ativa durante a utilização do programa e reconectar quando necessário.
-
-## 18. Código inicial
-
-O projeto deve partir deste conceito:
-
-```python
-import imaplib
-
-IMAP_SERVER = "imap.gmail.com"
-IMAP_PORT = 993
-
-mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-mail.login(email, senha)
-```
-
-Porém, refatore para uma arquitetura modular e obtenha:
-
-```python
-email = settings.gmail_email
-senha = settings.gmail_app_password
-```
-
-a partir do `.env`.
-
-## 19. Dependências
-
-Criar `requirements.txt` contendo somente as dependências realmente utilizadas.
-
-Preferir bibliotecas da biblioteca padrão Python quando possível.
-
-Adicionar inicialmente:
-
-```text
-python-dotenv
-rich
-```
-
-Não adicionar frameworks desnecessários.
-
-## 20. Qualidade
-
-O código deve ser:
-
-* modular;
-* simples;
-* legível;
-* tipado quando fizer sentido;
-* com funções pequenas;
-* sem código duplicado;
-* sem arquivos gigantes;
-* sem lógica de negócio dentro de `app.py`.
-
-Não criar complexidade desnecessária.
-
-## 21. README
-
-Criar README explicando:
-
-1. Requisitos.
-2. Instalação.
-3. Criação do `.env`.
-4. Como obter a Senha de app do Google.
-5. Como executar.
-6. Estrutura do projeto.
-7. Funcionalidades.
-8. Limitações do IMAP/Gmail.
-
-## 22. Regra importante
-
-Antes de criar qualquer arquivo, analise o projeto atual.
-
-Se os arquivos já existirem, **não sobrescreva funcionalidades existentes sem necessidade**.
-
-Implemente incrementalmente.
-
-Ao finalizar, execute testes básicos:
-
-```text
+```bash
 python app.py
 ```
 
-e valide:
+O aplicativo irá:
+1. Carregar as configurações do `.env`
+2. Conectar ao Gmail via IMAP
+3. Mostrar o menu principal
 
-* carregamento do `.env`;
-* conexão IMAP;
-* autenticação;
-* acesso à INBOX;
-* listagem de pastas;
-* listagem de mensagens;
-* pesquisa;
-* leitura;
-* identificação de anexos.
+## 📁 Estrutura do Projeto
 
-O resultado deve ser um **gerenciador Gmail CLI funcional, simples e prático**, focado principalmente em facilitar a localização, leitura, organização e **download de arquivos/anexos recebidos por e-mail**.
+```
+gmail-manager/
+│
+├── app.py                 # Ponto de entrada da aplicação
+├── .env                   # Configurações (NÃO commitar)
+├── .env.example           # Exemplo de configuração
+├── .gitignore             # Arquivos ignorados pelo Git
+├── requirements.txt       # Dependências Python
+├── README.md              # Este arquivo
+│
+├── src/
+│   ├── __init__.py
+│   │
+│   ├── config/
+│   │   ├── __init__.py
+│   │   └── settings.py    # Carregamento de configurações
+│   │
+│   ├── imap/
+│   │   ├── __init__.py
+│   │   ├── client.py      # Cliente IMAP
+│   │   ├── folders.py     # Gerenciamento de pastas
+│   │   ├── messages.py    # Gerenciamento de mensagens
+│   │   └── search.py      # Busca de e-mails
+│   │
+│   ├── email_parser/
+│   │   ├── __init__.py
+│   │   └── parser.py      # Parser de e-mails
+│   │
+│   ├── attachments/
+│   │   ├── __init__.py
+│   │   └── downloader.py  # Download de anexos
+│   │
+│   └── cli/
+│       ├── __init__.py
+│       └── menu.py        # Interface CLI
+│
+└── downloads/             # Pasta para anexos baixados
+```
+
+## ✨ Funcionalidades
+
+### Menu Principal
+
+```
+1. Caixa de entrada      - Lista e-mails da pasta atual
+2. Pastas / Marcadores   - Mostra todas as pastas disponíveis
+3. Pesquisar e-mails     - Busca por remetente, assunto, etc.
+4. Abrir e-mail          - Lê o conteúdo completo de um e-mail
+5. Selecionar e-mails    - Seleciona múltiplos e-mails por ID
+6. Baixar anexos         - Downloads dos anexos dos e-mails selecionados
+7. Gerenciar e-mails     - Marcar como lido/não lido, excluir, mover
+8. Atualizar             - Reconecta ao servidor
+0. Sair                  - Encerra a aplicação
+```
+
+### Pesquisa de E-mails
+
+Formatos suportados:
+
+| Formato | Descrição | Exemplo |
+|---------|-----------|---------|
+| `from:` | Buscar por remetente | `from:empresa@email.com` |
+| `to:` | Buscar por destinatário | `to:cliente@email.com` |
+| `subject:` | Buscar no assunto | `subject:nota fiscal` |
+| `unread` | E-mails não lidos | `unread` |
+| Texto livre | Busca em assunto e corpo | `relatório mensal` |
+
+### Seleção Múltipla
+
+Para selecionar e-mails:
+- IDs separados por vírgula: `1,3,5`
+- Todos os e-mails: `all`
+
+### Anexos
+
+Os anexos são salvos na pasta `downloads/`. O sistema:
+- Detecta automaticamente anexos em cada e-mail
+- Evita sobrescrever arquivos existentes (adiciona `_1`, `_2`, etc.)
+- Mostra progresso durante o download
+- Suporta download em massa de múltiplos e-mails
+
+### Gerenciamento de E-mails
+
+Ações disponíveis para e-mails selecionados:
+- **Marcar como lido** - Remove a marcação de não lido
+- **Marcar como não lido** - Adiciona marcação de não lido
+- **Excluir** - Move e-mails para a Lixeira do Gmail
+- **Mover** - Copia e-mails para outra pasta
+
+⚠️ **Atenção:** Ações destrutivas pedem confirmação antes de executar.
+
+## 🔒 Segurança
+
+O projeto segue boas práticas de segurança:
+
+- ✅ Credenciais armazenadas apenas no `.env`
+- ✅ `.env` ignorado pelo Git (`.gitignore`)
+- ✅ Senha nunca impressa no terminal
+- ✅ Conteúdo HTML convertido para texto seguro
+- ✅ Nenhum JavaScript executado
+- ✅ Confirmação para ações destrutivas
+- ✅ Números sequenciais para evitar sobrescrita de arquivos
+
+## ⚠️ Limitações do IMAP/Gmail
+
+1. **Autenticação**: Requer Senha de App (não funciona com senha normal)
+2. **HTTPS Only**: Conexão apenas via SSL/TLS (porta 993)
+3. **Rate Limiting**: Google pode limitar conexões frequentes
+4. **Pastas do Gmail**: Algumas pastas são especiais (`[Gmail]/All Mail`, etc.)
+5. **Exclusão**: E-mails "excluídos" vão para a Lixeira, não são removidos permanentemente
+6. **Movimentação**: Gmail usa COPY + DELETE para mover e-mails entre pastas
+
+## 🛠️ Solução de Problemas
+
+### Erro: "Invalid credentials"
+
+- Verifique se o e-mail está correto no `.env`
+- Gere uma nova Senha de App no Google
+- Certifique-se de que a Verificação em Duas Etapas está ativa
+
+### Erro: "Connection timeout"
+
+- Verifique sua conexão com a internet
+- O firewall pode estar bloqueando a porta 993
+- Tente a opção "Atualizar" no menu
+
+### Erro: "INBOX não encontrada"
+
+- O Gmail pode usar nomes diferentes dependendo do idioma
+- Use a opção "Pastas / Marcadores" para ver os nomes reais
+
+### Nenhum anexo encontrado
+
+- Alguns e-mails podem ter anexos inline (incorporados)
+- Verifique se o e-mail realmente tem anexos
+
+## 📝 Licença
+
+Este projeto é fornecido "como está" para fins educacionais e de uso pessoal.
+
+---
+
+**Nota:** Este projeto usa IMAP padrão e não a API do Gmail. Para integrações mais complexas, considere usar a [Gmail API oficial](https://developers.google.com/gmail/api).
