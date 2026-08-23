@@ -262,7 +262,7 @@ class IMAPClient:
             return False
 
     def mark_read(self, message_ids: list[int]) -> bool:
-        """Mark messages as read.
+        """Mark messages as read (add \\Seen flag).
 
         Args:
             message_ids: List of message IDs to mark as read.
@@ -277,7 +277,7 @@ class IMAPClient:
         for msg_id in message_ids:
             try:
                 typ, _ = self._connection.store(
-                    str(msg_id), "-FLAGS", "\\Seen"
+                    str(msg_id), "+FLAGS", "\\Seen"
                 )
                 if typ != "OK":
                     success = False
@@ -288,7 +288,7 @@ class IMAPClient:
         return success
 
     def mark_unread(self, message_ids: list[int]) -> bool:
-        """Mark messages as unread.
+        """Mark messages as unread (remove \\Seen flag).
 
         Args:
             message_ids: List of message IDs to mark as unread.
@@ -303,7 +303,7 @@ class IMAPClient:
         for msg_id in message_ids:
             try:
                 typ, _ = self._connection.store(
-                    str(msg_id), "+FLAGS", "\\Seen"
+                    str(msg_id), "-FLAGS", "\\Seen"
                 )
                 if typ != "OK":
                     success = False

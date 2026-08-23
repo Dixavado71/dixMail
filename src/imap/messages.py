@@ -219,25 +219,42 @@ class MessageManager:
         count = 0
 
         try:
-            data_str = body_structure.decode("utf-8", errors="ignore").upper()
+            # Check for attachment dispositions more accurately
+            # Look for disposition "attachment" specifically (not inline)
+            attachment_parts = []
+            
+            # Parse the body structure to find parts with attachment disposition
+            # BODYSTRUCTURE format is complex, we look for patterns like:
+            # ("APPLICATION/PDF" NIL ("NAME" "file.pdf") NIL NIL "BASE64" 12345 NIL NIL NIL NIL)
+            # followed by disposition info
+            
+            data_str = body_structure.decode("utf-8", errors="ignore")
+            data_upper = data_str.upper()
+            
+            # Count FILENAME parameters that are in ATTACHMENT disposition
+            # Pattern: NIL NIL NIL NIL ("ATTACHMENT" ("FILENAME" "name.ext"))
+            # We need to be careful not to count inline images
+            
+            # Simple but effective approach: count FILENAME only if near ATTACHMENT
+            lines_or_parts = data_str.split(')')
+            for part in lines_or_parts:
+                part_upper = part.upper()
+                # Only count if this part has ATTACHMENT disposition
+                if 'ATTACHMENT' in part_upper and 'FILENAME' in part_upper:
+                    count += 1
+            
+            # Fallback: if we found ATTACHMENT but no FILENAME counted, estimate
+            if count == 0 and b'ATTACHMENT' in body_structure:
+                # At least one attachment exists
+                count = 1
+                
+            has_attachments = count > 0
 
-            # Count occurrences of disposition types indicating attachments
-            if b"ATTACHMENT" in body_structure or b"INLINE" in body_structure:
-                # Simple heuristic: count FILENAME parameters
-                count = data_str.count(b'FILENAME')
-                if count > 0:
-                    has_attachments = True
-
-            # Also check for common attachment indicators
-            if b'"APPLICATION/' in body_structure:
-                has_attachments = True
-                if count == 0:
-                    count = 1
-
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Error parsing body structure: {e}")
             pass
 
-        return has_attachments, max(1, count) if has_attachments else 0
+        return has_attachments, count
 
     def _decode_header(self, header: Any) -> str:
         """Decode email header.
