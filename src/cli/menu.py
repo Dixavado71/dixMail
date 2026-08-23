@@ -181,20 +181,35 @@ class GmailManagerCLI:
         self.console.print()
         return Prompt.ask("Escolha uma opção", choices=[m[0] for m in menu_items])
 
-    def _show_inbox(self) -> None:
-        """Show inbox messages."""
+    def _show_inbox(self, page: int = 0, page_size: int = 50) -> None:
+        """Show inbox messages with pagination.
+
+        Args:
+            page: Page number (0-indexed).
+            page_size: Number of messages per page.
+        """
         self.console.print(f"\n[cyan]Carregando caixa de entrada...[/cyan]")
 
         try:
             self.imap_client.select_folder(self.current_folder, readonly=True)
-            summaries = self.message_manager.get_message_summaries(limit=50)
-
-            if not summaries:
+            total_count = self.message_manager.get_message_count()
+            
+            if total_count == 0:
                 self.console.print("[yellow]Nenhuma mensagem encontrada.[/yellow]")
                 return
 
-            table = Table(title=f"Caixa de Entrada - {self.current_folder}")
+            summaries = self.message_manager.get_message_summaries(
+                limit=page_size, 
+                offset=page * page_size
+            )
+
+            if not summaries:
+                self.console.print("[yellow]Nenhuma mensagem encontrada nesta página.[/yellow]")
+                return
+
+            table = Table(title=f"Caixa de Entrada - {self.current_folder} (Página {page + 1})")
             table.add_column("ID", style="cyan", width=5)
+            table.add_column("Sel", width=4, justify="center")
             table.add_column("Data", width=12)
             table.add_column("Remetente", width=30)
             table.add_column("Assunto", width=40)
@@ -202,11 +217,16 @@ class GmailManagerCLI:
             table.add_column("Anexos", width=8)
 
             for msg in summaries:
+                # Check if message is selected
+                is_selected = msg.id in self.selected_messages
+                sel_icon = "[green]✓[/green]" if is_selected else ""
+                
                 status_style = "bold green" if msg.status == "NOVO" else "dim"
                 annex_icon = f"📎 {msg.attachment_count}" if msg.has_attachments else ""
 
                 table.add_row(
                     str(msg.id),
+                    sel_icon,
                     msg.date_str,
                     msg.from_[:28] + "..." if len(msg.from_) > 30 else msg.from_,
                     msg.subject[:38] + "..." if len(msg.subject) > 40 else msg.subject,
@@ -215,7 +235,25 @@ class GmailManagerCLI:
                 )
 
             self.console.print(table)
-            self.console.print(f"\n[dim]Mostrando {len(summaries)} mensagens[/dim]")
+            self.console.print(f"\n[dim]Mostrando {len(summaries)} de {total_count} mensagens (página {page + 1})[/dim]")
+            
+            # Pagination controls
+            total_pages = (total_count + page_size - 1) // page_size
+            if total_pages > 1:
+                self.console.print("\n[dim]Navegação: [bold]n[/bold] próxima página, [bold]p[/bold] página anterior, [bold]1[/bold]-[bold]{max_page}[/bold] ir para página[/dim]".format(max_page=total_pages))
+                
+                nav_choice = Prompt.ask("\nNavegar", choices=["n", "p", "1", "2", "3", "4", "5"], default="")
+                
+                if nav_choice == "n" and page < total_pages - 1:
+                    self._show_inbox(page=page + 1, page_size=page_size)
+                elif nav_choice == "p" and page > 0:
+                    self._show_inbox(page=page - 1, page_size=page_size)
+                elif nav_choice.isdigit():
+                    new_page = int(nav_choice) - 1
+                    if 0 <= new_page < total_pages:
+                        self._show_inbox(page=new_page, page_size=page_size)
+                    else:
+                        self.console.print("[red]Página inválida[/red]")
 
         except Exception as e:
             logger.exception("Error loading inbox")
@@ -273,7 +311,7 @@ class GmailManagerCLI:
             self.console.print(f"[red]Erro ao listar pastas: {e}[/red]")
 
     def _search_emails(self) -> None:
-        """Search emails."""
+        """Search emails with improved feedback."""
         self.console.print("\n[cyan]Pesquisa de e-mails[/cyan]")
         self.console.print("\n[dim]Formatos suportados:[/dim]")
         self.console.print("  from:email@exemplo.com")
@@ -296,34 +334,42 @@ class GmailManagerCLI:
                 self.console.print("[yellow]Nenhum resultado encontrado.[/yellow]")
                 return
 
-            self.console.print(f"[green]✓ {len(message_ids)} resultados encontrados[/green]")
+            result_count = len(message_ids)
+            display_limit = 50
+            
+            self.console.print(f"[green]✓ {result_count} resultados encontrados[/green]")
+            
+            if result_count > display_limit:
+                self.console.print(f"[dim]Exibindo os primeiros {display_limit} resultados[/dim]")
 
             # Show results
             self.imap_client.select_folder(self.current_folder, readonly=True)
-            summaries = self.message_manager.get_message_summaries(limit=len(message_ids))
-
-            # Filter to only show searched messages
-            search_summaries = [s for s in summaries if s.id in message_ids]
+            
+            # Get summaries for the found messages (limited for display)
+            all_summaries = self.message_manager.get_message_summaries(limit=result_count)
+            search_summaries = [s for s in all_summaries if s.id in message_ids][:display_limit]
 
             if search_summaries:
-                table = Table(title=f"Resultados da Pesquisa ({len(search_summaries)})")
+                table = Table(title=f"Resultados da Pesquisa ({len(search_summaries)} de {result_count})")
                 table.add_column("ID", style="cyan", width=5)
+                table.add_column("Sel", width=4, justify="center")
                 table.add_column("Data", width=12)
                 table.add_column("Remetente", width=30)
                 table.add_column("Assunto", width=50)
 
-                for msg in search_summaries[:50]:  # Limit display
+                for msg in search_summaries:
+                    is_selected = msg.id in self.selected_messages
+                    sel_icon = "[green]✓[/green]" if is_selected else ""
+                    
                     table.add_row(
                         str(msg.id),
+                        sel_icon,
                         msg.date_str,
                         msg.from_[:28] + "..." if len(msg.from_) > 30 else msg.from_,
                         msg.subject[:48] + "..." if len(msg.subject) > 50 else msg.subject,
                     )
 
                 self.console.print(table)
-
-                if len(search_summaries) > 50:
-                    self.console.print(f"[dim]... e mais {len(search_summaries) - 50} mensagens[/dim]")
 
         except Exception as e:
             logger.exception("Search error")
@@ -522,10 +568,26 @@ class GmailManagerCLI:
             self.console.print(f"[red]Erro: {e}[/red]")
 
     def _delete_emails(self) -> None:
-        """Delete selected emails."""
+        """Delete selected emails with preview."""
         self.console.print(f"\n[red bold]ATENÇÃO: Esta ação excluirá {len(self.selected_messages)} e-mails[/red bold]")
+        
+        # Show preview of emails to be deleted
+        if self.selected_messages:
+            self.console.print("\n[yellow]E-mails que serão excluídos:[/yellow]")
+            try:
+                self.imap_client.select_folder(self.current_folder, readonly=True)
+                all_summaries = self.message_manager.get_message_summaries(limit=len(self.selected_messages))
+                preview_summaries = [s for s in all_summaries if s.id in self.selected_messages][:10]
+                
+                for msg in preview_summaries:
+                    self.console.print(f"  • ID {msg.id}: {msg.subject[:50]} (de: {msg.from_[:30]})")
+                
+                if len(self.selected_messages) > 10:
+                    self.console.print(f"  ... e mais {len(self.selected_messages) - 10} e-mails")
+            except Exception as e:
+                self.console.print(f"[dim]Não foi possível mostrar preview: {e}[/dim]")
 
-        if not Confirm.ask("Tem certeza que deseja continuar?"):
+        if not Confirm.ask("\nTem certeza que deseja continuar?"):
             return
 
         try:
@@ -564,7 +626,7 @@ class GmailManagerCLI:
         self.console.print("\n[cyan]Atualizando...[/cyan]")
 
         try:
-            if self.imap_client.reconnect():
+            if self.imap_client.reconnect(max_attempts=3):
                 self.is_connected = True
                 self.console.print("[green]✓ Conexão atualizada[/green]")
             else:

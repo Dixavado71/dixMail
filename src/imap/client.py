@@ -2,6 +2,7 @@
 
 import imaplib
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -62,14 +63,28 @@ class IMAPClient:
             finally:
                 self._connection = None
 
-    def reconnect(self) -> bool:
-        """Reconnect to IMAP server.
+    def reconnect(self, max_attempts: int = 3) -> bool:
+        """Reconnect to IMAP server with limited attempts.
+
+        Args:
+            max_attempts: Maximum number of reconnection attempts.
 
         Returns:
             True if reconnection successful, False otherwise.
         """
         self.disconnect()
-        return self.connect()
+        
+        for attempt in range(1, max_attempts + 1):
+            logger.info(f"Reconnection attempt {attempt}/{max_attempts}")
+            if self.connect():
+                logger.info("Reconnection successful")
+                return True
+            
+            if attempt < max_attempts:
+                time.sleep(2)  # Wait before next attempt
+        
+        logger.error(f"Failed to reconnect after {max_attempts} attempts")
+        return False
 
     def _ensure_connected(self) -> bool:
         """Ensure connection is active, reconnect if needed.
