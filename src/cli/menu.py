@@ -8,6 +8,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.prompt import Prompt, Confirm
 from rich.text import Text
+from rich.progress import Progress
 
 from src.config.settings import Settings
 from src.imap.client import IMAPClient
