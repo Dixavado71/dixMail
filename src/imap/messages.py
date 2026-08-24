@@ -95,68 +95,92 @@ class MessageManager:
             MessageSummary or None if failed.
         """
         try:
-            # Fetch envelope and flags data separately for clarity
-            # First get FLAGS
-            typ, flags_data = self.client._connection.fetch(str(message_id), "FLAGS")
+            # Fetch ENVELOPE and FLAGS in a single request
+            typ, data = self.client._connection.fetch(
+                str(message_id), "(ENVELOPE FLAGS)"
+            )
             
             is_seen = False
-            if typ == "OK" and flags_data:
-                for item in flags_data:
-                    if isinstance(item, bytes) and b"\\Seen" in item:
-                        is_seen = True
-                        break
-                    elif isinstance(item, tuple):
-                        for subitem in item:
-                            if isinstance(subitem, bytes) and b"\\Seen" in subitem:
-                                is_seen = True
-                                break
-
-            # Then get ENVELOPE
-            typ, env_data = self.client._connection.fetch(str(message_id), "ENVELOPE")
+            envelope_tuple = None
             
-            envelope = None
+            if typ == "OK" and data and len(data) > 0:
+                # Response format: b'ID (FLAGS (...) ENVELOPE (...))'
+                response = data[0]
+                
+                if isinstance(response, bytes):
+                    response_str = response.decode("utf-8", errors="replace")
+                    
+                    # Check for \\Seen flag
+                    if "\\Seen" in response_str:
+                        is_seen = True
+                    
+                    # Extract ENVELOPE content using string parsing
+                    env_start = response_str.find("ENVELOPE (")
+                    if env_start != -1:
+                        # Find matching closing parenthesis
+                        start_pos = env_start + len("ENVELOPE (")
+                        depth = 1
+                        end_pos = start_pos
+                        while depth > 0 and end_pos < len(response_str):
+                            if response_str[end_pos] == "(":
+                                depth += 1
+                            elif response_str[end_pos] == ")":
+                                depth -= 1
+                            end_pos += 1
+                        
+                        envelope_content = response_str[start_pos:end_pos-1]
+                        
+                        # Parse the envelope tuple from the string
+                        # Format: \"date\" \"subject\" ((\"name\" NIL \"user\" \"host\")) ...
+                        envelope_tuple = self._parse_envelope_string(envelope_content)
+
+            # If we couldn't parse from combined fetch, try separate ENVELOPE fetch
+            if envelope_tuple is None:
+                typ, env_data = self.client._connection.fetch(str(message_id), "ENVELOPE")
+                if typ == "OK" and env_data:
+                    for item in env_data:
+                        if isinstance(item, bytes):
+                            item_str = item.decode("utf-8", errors="replace")
+                            env_start = item_str.find("ENVELOPE (")
+                            if env_start != -1:
+                                start_pos = env_start + len("ENVELOPE (")
+                                depth = 1
+                                end_pos = start_pos
+                                while depth > 0 and end_pos < len(item_str):
+                                    if item_str[end_pos] == "(":
+                                        depth += 1
+                                    elif item_str[end_pos] == ")":
+                                        depth -= 1
+                                    end_pos += 1
+                                envelope_content = item_str[start_pos:end_pos-1]
+                                envelope_tuple = self._parse_envelope_string(envelope_content)
+                                break
+                        elif isinstance(item, tuple):
+                            for subitem in item:
+                                if isinstance(subitem, tuple) and len(subitem) >= 7:
+                                    envelope_tuple = subitem
+                                    break
+            
+            # Extract envelope fields
             date_str = ""
             from_str = ""
             to_str = ""
             subject = ""
             date = None
 
-            if typ == "OK" and env_data:
-                # Parse the envelope from response
-                # Response format: (b'1 (ENVELOPE (...))',) or similar
-                for item in env_data:
-                    if isinstance(item, bytes):
-                        # Try to find ENVELOPE tuple in bytes
-                        pass
-                    elif isinstance(item, tuple):
-                        # Look for the envelope tuple within the response
-                        for subitem in item:
-                            if isinstance(subitem, tuple) and len(subitem) >= 7:
-                                envelope = subitem
-                                break
-                        # Also check if item itself is the envelope
-                        if not envelope and len(item) >= 7 and all(
-                            isinstance(x, (tuple, bytes, str, type(None))) for x in item[:7]
-                        ):
-                            # Check if first elements look like envelope data
-                            if isinstance(item[0], (bytes, str)) and isinstance(item[1], (bytes, str)):
-                                envelope = item
-                                break
-            
-            # Extract envelope fields
-            if envelope and len(envelope) >= 7:
+            if envelope_tuple and len(envelope_tuple) >= 7:
                 # ENVELOPE structure: 
                 # [0]=date, [1]=subject, [2]=from, [3]=to, [4]=cc, [5]=bcc, [6]=in_reply_to, [7]=message_id
-                date_str = self._decode_header(envelope[0]) if envelope[0] else ""
-                subject = self._decode_header(envelope[1]) if envelope[1] else ""
+                date_str = self._decode_header(envelope_tuple[0]) if envelope_tuple[0] else ""
+                subject = self._decode_header(envelope_tuple[1]) if envelope_tuple[1] else ""
 
                 # Parse from addresses
-                if envelope[2]:
-                    from_str = self._parse_addresses(envelope[2])
+                if envelope_tuple[2]:
+                    from_str = self._parse_addresses(envelope_tuple[2])
 
                 # Parse to addresses
-                if envelope[3]:
-                    to_str = self._parse_addresses(envelope[3])
+                if envelope_tuple[3]:
+                    to_str = self._parse_addresses(envelope_tuple[3])
 
                 # Parse date
                 if date_str:
@@ -208,6 +232,126 @@ class MessageManager:
             import traceback
             logger.debug(traceback.format_exc())
             return None
+    
+    def _parse_envelope_string(self, envelope_str: str) -> tuple | None:
+        """Parse envelope string into a tuple.
+        
+        Args:
+            envelope_str: String representation of envelope content.
+            
+        Returns:
+            Tuple with envelope fields or None if parsing fails.
+        """
+        try:
+            # This is a simplified parser for IMAP ENVELOPE format
+            # Format: \"date\" \"subject\" ((\"name\" NIL \"user\" \"host\")) ...
+            import re
+            
+            result = []
+            pos = 0
+            current_depth = 0
+            current_token = ""
+            in_string = False
+            i = 0
+            
+            while i < len(envelope_str):
+                char = envelope_str[i]
+                
+                if char == '"' and (i == 0 or envelope_str[i-1] != '\\\\'):
+                    in_string = not in_string
+                    current_token += char
+                elif in_string:
+                    current_token += char
+                elif char == '(':
+                    if current_depth == 0 and current_token.strip():
+                        # Save any pending token
+                        result.append(self._convert_token(current_token.strip()))
+                        current_token = ""
+                    current_depth += 1
+                    if current_depth == 1:
+                        # Start of a new list
+                        current_token = "("
+                    else:
+                        current_token += char
+                elif char == ')':
+                    current_depth -= 1
+                    if current_depth == 0:
+                        # End of list
+                        current_token += ")"
+                        # Parse nested list
+                        nested = self._parse_nested_list(current_token)
+                        result.append(nested)
+                        current_token = ""
+                    else:
+                        current_token += char
+                elif char == ' ' and current_depth == 0:
+                    if current_token.strip():
+                        result.append(self._convert_token(current_token.strip()))
+                        current_token = ""
+                else:
+                    current_token += char
+                
+                i += 1
+            
+            # Handle any remaining token
+            if current_token.strip():
+                result.append(self._convert_token(current_token.strip()))
+            
+            return tuple(result) if result else None
+            
+        except Exception as e:
+            logger.debug(f"Error parsing envelope string: {e}")
+            return None
+    
+    def _convert_token(self, token: str):
+        """Convert a token to appropriate type."""
+        if token.startswith('"') and token.endswith('"'):
+            # Remove quotes and handle escaped characters
+            return token[1:-1].replace('\\\\', '\\').replace('\\"', '"')
+        elif token == "NIL":
+            return None
+        else:
+            return token
+    
+    def _parse_nested_list(self, list_str: str) -> list:
+        """Parse a nested list string like ((\"name\" NIL \"user\" \"host\"))."""
+        if not list_str.startswith('(') or not list_str.endswith(')'):
+            return list_str
+        
+        # Remove outer parentheses
+        inner = list_str[1:-1].strip()
+        
+        if not inner:
+            return []
+        
+        result = []
+        current_token = ""
+        depth = 0
+        in_string = False
+        
+        for i, char in enumerate(inner):
+            if char == '"' and (i == 0 or inner[i-1] != '\\\\'):
+                in_string = not in_string
+                current_token += char
+            elif in_string:
+                current_token += char
+            elif char == '(':
+                depth += 1
+                current_token += char
+            elif char == ')':
+                depth -= 1
+                current_token += char
+            elif char == ' ' and depth == 0:
+                if current_token.strip():
+                    result.append(self._convert_token(current_token.strip()))
+                    current_token = ""
+            else:
+                current_token += char
+        
+        if current_token.strip():
+            result.append(self._convert_token(current_token.strip()))
+        
+        return result
 
     def _parse_body_structure(
         self, body_structure: bytes
@@ -261,11 +405,11 @@ class MessageManager:
 
         return has_attachments, count
 
-    def _decode_header(self, header: Any) -> str:
+    def _decode_header(self, header) -> str:
         """Decode email header.
 
         Args:
-            header: Header value (bytes or string).
+            header: Header value (bytes, string, or encoded word format).
 
         Returns:
             Decoded string.
@@ -289,24 +433,64 @@ class MessageManager:
             except Exception:
                 return str(header)
 
+        # Handle encoded words in string format (=?UTF-8?Q?...?=)
+        if isinstance(header, str):
+            from email.header import decode_header as email_decode_header
+            
+            try:
+                decoded_parts = email_decode_header(header)
+                decoded = ""
+                for part, encoding in decoded_parts:
+                    if isinstance(part, bytes):
+                        decoded += part.decode(encoding or "utf-8", errors="replace")
+                    else:
+                        decoded += str(part)
+                return decoded
+            except Exception:
+                pass
+            
+            return header
+
         return str(header)
 
-    def _parse_addresses(self, addresses: list) -> str:
+    def _parse_addresses(self, addresses) -> str:
         """Parse address list.
 
         Args:
-            addresses: List of address tuples.
+            addresses: List of address tuples or string representation.
 
         Returns:
             Formatted address string.
         """
         if not addresses:
             return ""
+        
+        # Handle case where addresses is a list containing a single string like '("SHEIN" NIL "shein" "edm.shein.com")'
+        if isinstance(addresses, list) and len(addresses) == 1 and isinstance(addresses[0], str):
+            addr_str = addresses[0]
+            # Parse the string format: ("name" NIL "user" "host")
+            import re
+            match = re.match(r'\(("([^"]*)"|NIL)\s+(NIL|"([^"]*)")\s+(NIL|"([^"]*)")\s+(NIL|"([^"]*)")\)', addr_str)
+            if match:
+                name = match.group(2) or ""
+                mailbox = match.group(4) or ""
+                host = match.group(6) or ""
+                
+                if name:
+                    return name
+                elif mailbox and host:
+                    return f"{mailbox}@{host}"
+                elif mailbox:
+                    return mailbox
+        
+        if not isinstance(addresses, (list, tuple)):
+            return str(addresses)
 
         parts = []
         for addr in addresses:
-            if isinstance(addr, tuple) and len(addr) >= 4:
+            if isinstance(addr, (list, tuple)) and len(addr) >= 4:
                 # (name, mailbox name, host name, personal name)
+                # IMAP envelope format: (personal name, mailbox name, host name, full name)
                 name = self._decode_header(addr[3]) if addr[3] else ""
                 mailbox = self._decode_header(addr[1]) if addr[1] else ""
                 host = self._decode_header(addr[2]) if addr[2] else ""
