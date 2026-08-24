@@ -1,6 +1,7 @@
 """Folder management for IMAP."""
 
 import logging
+import re
 from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
@@ -45,37 +46,36 @@ class FolderManager:
                 if isinstance(item, bytes):
                     item = item.decode("utf-8")
 
-                # Parse folder response: (attributes) delimiter "name"
+                # Parse folder response using regex for robustness
+                # Format: (attributes) delimiter "name"
                 # Example: (\HasNoChildren) "/" "INBOX"
-                parts = item.split(' "')
-                if len(parts) >= 2:
-                    # Extract attributes
-                    attr_part = parts[0].strip().lstrip("(").rstrip(")")
+                # Gmail: (\HasNoChildren \All) "/" "[Gmail]/Todos os e-mails"
+                
+                pattern = r'\(([^)]*)\)\s+(?:"([^"]*)"|(\S+))\s+"([^"]+)"'
+                match = re.match(pattern, item)
+                
+                if match:
+                    attr_part = match.group(1).strip()
                     attributes = tuple(attr_part.split()) if attr_part else ()
-
-                    # Extract delimiter and name
-                    remaining = ' "'.join(parts[1:])
-                    if remaining.startswith('"'):
-                        remaining = remaining[1:]
-
-                    # Find delimiter
-                    delim_parts = remaining.split('" ')
-                    if len(delim_parts) >= 2:
-                        delimiter = delim_parts[0].strip()
-                        name = delim_parts[1].strip().rstrip('"')
-                    else:
+                    
+                    # Delimiter can be quoted or unquoted
+                    delimiter = match.group(2) if match.group(2) else match.group(3)
+                    if not delimiter or delimiter == "NIL":
                         delimiter = "/"
-                        name = remaining.strip('"')
-
+                    
+                    name = match.group(4).strip()
+                    
                     # Check if selectable (doesn't have \Noselect)
                     is_selectable = "\\Noselect" not in [a.lower() for a in attributes]
-
+                    
                     folders.append(FolderInfo(
                         name=name,
                         delimiter=delimiter,
                         attributes=attributes,
                         is_selectable=is_selectable
                     ))
+                else:
+                    logger.debug(f"Could not parse folder line: {item}")
 
             return folders
 
@@ -96,6 +96,7 @@ class FolderManager:
             return 0
 
         try:
+            # Use readonly=True to avoid modifying flags
             typ, data = self.client.select_folder(folder, readonly=True)
             if typ == "OK" and data:
                 return int(data[0])
