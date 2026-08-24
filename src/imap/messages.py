@@ -95,70 +95,58 @@ class MessageManager:
             MessageSummary or None if failed.
         """
         try:
-            # Fetch envelope data
-            typ, data = self.client._connection.fetch(
-                str(message_id), "(ENVELOPE FLAGS BODYSTRUCTURE)"
-            )
-
-            if typ != "OK" or not data:
-                return None
-
-            # Parse flags
-            flags = b""
-            has_attachments = False
-            attachment_count = 0
-
-            for item in data:
-                if isinstance(item, bytes):
-                    if b"FLAGS" in item:
-                        # Extract flags
-                        start = item.find(b"FLAGS")
-                        if start != -1:
-                            end = item.find(b")", start)
-                            if end != -1:
-                                flags = item[start:end + 1]
-
-                elif isinstance(item, tuple):
-                    for subitem in item:
-                        if isinstance(subitem, bytes):
-                            if b"BODYSTRUCTURE" in subitem:
-                                # Simple attachment detection
-                                has_attachments, attachment_count = self._parse_body_structure(
-                                    subitem
-                                )
-
-            is_seen = b"\\Seen" in flags
-
-            # Parse envelope
-            envelope = None
-            for item in data:
-                if isinstance(item, tuple) and len(item) >= 2:
-                    # Look for envelope data
-                    env_data = item[1] if isinstance(item[1], tuple) else None
-                    if env_data:
-                        envelope = env_data
+            # Fetch envelope and flags data separately for clarity
+            # First get FLAGS
+            typ, flags_data = self.client._connection.fetch(str(message_id), "FLAGS")
+            
+            is_seen = False
+            if typ == "OK" and flags_data:
+                for item in flags_data:
+                    if isinstance(item, bytes) and b"\\Seen" in item:
+                        is_seen = True
                         break
+                    elif isinstance(item, tuple):
+                        for subitem in item:
+                            if isinstance(subitem, bytes) and b"\\Seen" in subitem:
+                                is_seen = True
+                                break
 
-            if not envelope:
-                # Fallback: fetch just envelope
-                typ, env_data = self.client._connection.fetch(
-                    str(message_id), "(ENVELOPE)"
-                )
-                if typ == "OK" and env_data:
-                    for item in env_data:
-                        if isinstance(item, tuple):
-                            envelope = item
-                            break
-
-            # Extract envelope fields
+            # Then get ENVELOPE
+            typ, env_data = self.client._connection.fetch(str(message_id), "ENVELOPE")
+            
+            envelope = None
             date_str = ""
             from_str = ""
             to_str = ""
             subject = ""
             date = None
 
+            if typ == "OK" and env_data:
+                # Parse the envelope from response
+                # Response format: (b'1 (ENVELOPE (...))',) or similar
+                for item in env_data:
+                    if isinstance(item, bytes):
+                        # Try to find ENVELOPE tuple in bytes
+                        pass
+                    elif isinstance(item, tuple):
+                        # Look for the envelope tuple within the response
+                        for subitem in item:
+                            if isinstance(subitem, tuple) and len(subitem) >= 7:
+                                envelope = subitem
+                                break
+                        # Also check if item itself is the envelope
+                        if not envelope and len(item) >= 7 and all(
+                            isinstance(x, (tuple, bytes, str, type(None))) for x in item[:7]
+                        ):
+                            # Check if first elements look like envelope data
+                            if isinstance(item[0], (bytes, str)) and isinstance(item[1], (bytes, str)):
+                                envelope = item
+                                break
+            
+            # Extract envelope fields
             if envelope and len(envelope) >= 7:
-                # ENVELOPE structure: (date subject from sender reply-to to cc bcc in-reply-to message-id)
+                # ENVELOPE structure: 
+                # [0]=date, [1]=subject, [2]=from, [3]=to, [4]=cc, [5]=bcc, [6]=in_reply_to, [7]=message_id
                 date_str = self._decode_header(envelope[0]) if envelope[0] else ""
                 subject = self._decode_header(envelope[1]) if envelope[1] else ""
 
@@ -174,7 +162,8 @@ class MessageManager:
                 if date_str:
                     try:
                         date = self._parse_date(date_str)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"Error parsing date '{date_str}': {e}")
                         pass
 
             # Get UID
@@ -186,6 +175,20 @@ class MessageManager:
                 display_date = date.strftime("%d/%m/%Y")
             elif date_str:
                 display_date = date_str[:10] if len(date_str) >= 10 else date_str
+
+            # Detect attachments by fetching body structure
+            has_attachments = False
+            attachment_count = 0
+            typ, body_data = self.client._connection.fetch(
+                str(message_id), "BODYSTRUCTURE"
+            )
+            if typ == "OK" and body_data:
+                for item in body_data:
+                    if isinstance(item, tuple):
+                        for subitem in item:
+                            if isinstance(subitem, bytes) and b"BODYSTRUCTURE" in subitem:
+                                has_attachments, attachment_count = self._parse_body_structure(subitem)
+                                break
 
             return MessageSummary(
                 id=message_id,
@@ -202,6 +205,8 @@ class MessageManager:
 
         except Exception as e:
             logger.warning(f"Error parsing message {message_id}: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             return None
 
     def _parse_body_structure(
