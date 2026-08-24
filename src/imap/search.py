@@ -1,7 +1,7 @@
 """Search functionality for IMAP."""
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +235,3 @@ class SearchManager:
                 result.intersection_update(search_result)
             return sorted(result)
 
-
-# Import datetime for date parsing
-from datetime import datetime
